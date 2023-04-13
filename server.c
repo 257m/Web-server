@@ -94,24 +94,23 @@ if (f)
 	return page;
 }
 
-Page* LoadFileIntoPage(char* file,Page* page) {
-FILE * f = fopen (file, "rb");
-if (f)
+Page* LoadFileIntoPage(char* file, Page* page)
 {
-  fseek (f, 0, SEEK_END);
-  page->filelength = ftell(f);
-  fseek (f, 0, SEEK_SET);
-  page->textbuffer = malloc((page->filelength * sizeof(char)) + 1);
-	bzero(page->textbuffer,page->filelength+1);
-  if (page->textbuffer)
-  {
-    fread (page->textbuffer, 1, page->filelength, f);
-  }
-  fclose (f);
-} else {
-	printf("Failed to open file %s\n",file);
-	exit(-1);
-}
+	FILE * f = fopen (file, "rb");
+	if (f) {
+		fseek (f, 0, SEEK_END);
+		page->filelength = ftell(f);
+		fseek (f, 0, SEEK_SET);
+		page->textbuffer = malloc((page->filelength * sizeof(char)) + 1);
+		bzero(page->textbuffer,page->filelength+1);
+		if (page->textbuffer)
+			fread (page->textbuffer, 1, page->filelength, f);
+		fclose (f);
+	}
+	else {
+		printf("Failed to open file %s\n",file);
+		exit(-1);
+	}
 	char extension [32] = "\0";
 	int i = 0;
 	while (file[i++] != '.') {
@@ -175,19 +174,20 @@ Request* LoadRequestFromBuffer(Request* request,char* buffer) {
 		if (buffer[charnum] == ' ') {
 			charnum++;
 			break;
-			}
+		}
 		tempbuffer[charnum++] = buffer[charnum];
 	}
 	
 	for (int i = 0;i < sizeof(Request_Method_Strings)/sizeof(Request_Method_Strings[0]);i++) {
-	if (strcmp(tempbuffer,Request_Method_Strings[i]) == 0) {
-		request->method = i;
-		break;
-	}
+		if (strcmp(tempbuffer,Request_Method_Strings[i]) == 0) {
+			request->method = i;
+			break;
 		}
+	}
 	memset(tempbuffer,0,MAX_URL);
 	while(1) {
-		if (buffer[charnum] == ' ') break;
+		if (buffer[charnum] == ' ')
+			break;
 		tempbuffer[tempnum++] = buffer[charnum++];
 	}
 
@@ -305,8 +305,8 @@ char* load_file_into_buffer(char* filestring) {
 		fclose (f);
 	}
 	else {
-	printf("Failed to open file\n");
-	exit(-1);
+		printf("Failed to open file\n");
+		exit(-1);
 	}
 	return file;
 }
@@ -317,23 +317,13 @@ void save_string_to_file(char* string,char* filestring) {
 	fclose(f);
 }
 
-const char server_filenames [][32] = {
-"/index.html",
-"/loader.js",
-"/favicon.ico",
-"/octopus.png",
-"/main.wasm"
-};
+const char* public_dir = "~/c_projects/Web-server/public";
 
 #define PAGE_MAX (sizeof(server_filenames)/sizeof(server_filenames[0]))
 
 int main(int argc, char **argv) {
 	Request client_request = {0,""};
-	Page pages [PAGE_MAX];
-	char stratt_result [64];
-	for (int i = 0;i < PAGE_MAX;i++) {
-		LoadFileIntoPage(stratt("public",server_filenames[i],stratt_result),&pages[i]);
-	}
+	Page current_page;
 	char path_wo_query [32] = {0};
 	int listenfd, connfd, n;
 	struct sockaddr_in servaddr;
@@ -389,7 +379,8 @@ int main(int argc, char **argv) {
 		int i;
 
 		if (string_compare(path_wo_query,"/")) {
-			snprintf((char*)buff, sizeof(buff), "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",pages[0].content_type,pages[0].filelength);
+			snprintf((char*)buff, sizeof(buff), "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",
+					current_page.content_type,current_page.filelength);
 			i = 0;
 			while (1) {
 				if (buff[Http_Header_Size] == '\0')
