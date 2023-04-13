@@ -19,7 +19,7 @@
 #include <sys/ioctl.h>
 #include <netdb.h>
 
-#define SERVER_PORT 18000
+#define SERVER_PORT 80
 
 #define MAXLINE 4096
 
