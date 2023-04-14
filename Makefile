@@ -1,9 +1,9 @@
-all: clean main
+all: clean server
 
 CC = clang
 CFLAGS = -g -Wno-everything -pthread -lm
 
-main:
+server:
 	$(CC) $(CFLAGS) server.c -o server
 	./server
 

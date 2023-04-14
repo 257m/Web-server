@@ -14,7 +14,7 @@ bool string_compare(const char* str1,const char* str2) {
 		else return 0;
 }
 
-char* CharToNull(char* string,char* output,char c) {
+char* string_null_char(char* string,char* output,char c) {
 	unsigned int charnum = 0;
 	while (string[charnum] != '\0') {
 		if (string[charnum] != c)
@@ -27,7 +27,7 @@ char* CharToNull(char* string,char* output,char c) {
 	return output;
 }
 
-char* stratt(const char *s1, const char *s2,char* result)
+char* stratt(const char *s1, const char *s2, char* result)
 {
     strcpy(result, s1);
     strcat(result, s2);
@@ -35,12 +35,12 @@ char* stratt(const char *s1, const char *s2,char* result)
 }
 
 typedef struct {
-unsigned long int filelength;
-char* textbuffer;
-char* content_type;
+	unsigned long int filelength;
+	char* textbuffer;
+	char* content_type;
 } Page;
 
-Page* new_page() {
+Page* page_create() {
 	Page* page = malloc(sizeof(Page));
 	if (page) {
 	page->textbuffer = NULL;
@@ -53,32 +53,37 @@ Page* new_page() {
 	return page;
 }
 
-Page* CreatePageFromFile(char* filename) {
-Page* page = new_page();
-FILE * f = fopen (filename, "rb");
-if (f)
+void page_free(Page* page)
 {
-  fseek (f, 0, SEEK_END);
-  page->filelength = ftell(f);
-  fseek (f, 0, SEEK_SET);
-  page->textbuffer = malloc((page->filelength * sizeof(char)) + 1);
-	bzero(page->textbuffer,page->filelength+1);
-  if (page->textbuffer)
-  {
-    fread (page->textbuffer, 1, page->filelength, f);
-  }
-  fclose (f);
-} else {
-	printf("Failed to open file\n");
-	exit(-1);
+	free(page->textbuffer);
+	free(page);
 }
+
+Page* page_create_from_file(char* filename) {
+	Page* page = page_create();
+	FILE * f = fopen (filename, "rb");
+	if (f) {
+		fseek(f, 0, SEEK_END);
+		page->filelength = ftell(f);
+		fseek(f, 0, SEEK_SET);
+		page->textbuffer = malloc((page->filelength * sizeof(char)) + 1);
+		bzero(page->textbuffer,page->filelength+1);
+		if (page->textbuffer)
+			fread (page->textbuffer, 1, page->filelength, f);
+		fclose (f);
+	}
+	else {
+		printf("Failed to open file: %s\n", filename);
+		exit(-1);
+	}
 	char extension [32] = "\0";
 	int i = 0;
-	while (filename[i++] != '.') {
-		if (filename[i-1] == '\0') {
-			fprintf(stderr,"file name for page does not have file extension\nExiting...\n");
+	while (filename[i] != '.') {
+		if (!filename[i]) {
+			fprintf(stderr, "file name for page does not have file extension\nExiting...\n");
 			exit(-1);
 		}
+		i++;
 	}
 	int j = 0;
 	while (filename[i] != '\0')
@@ -89,13 +94,16 @@ if (f)
 		page->content_type = "text/javascript";
 	else if (string_compare(extension,"wasm"))
 		page->content_type = "application/wasm";
+	else if (string_compare(extension, "png"))
+		page->content_type = "image/png";
 	else
 		page->content_type = "text/html";
 	return page;
 }
 
-Page* LoadFileIntoPage(char* file, Page* page)
+Page* page_load_from_file(Page* page, char* file)
 {
+	free(page->textbuffer);
 	FILE * f = fopen (file, "rb");
 	if (f) {
 		fseek (f, 0, SEEK_END);
@@ -130,6 +138,8 @@ Page* LoadFileIntoPage(char* file, Page* page)
 		page->content_type = "image/png";
 	else if (string_compare(extension,"wasm"))
 		page->content_type = "application/wasm";
+	else if (string_compare(extension, "png"))
+		page->content_type = "image/png";
 	else
 		page->content_type = "text/html";
 	return page;
@@ -138,32 +148,32 @@ Page* LoadFileIntoPage(char* file, Page* page)
 #define MAX_URL 2048
 
 typedef struct {
-uint8_t method;
-char path [MAX_URL]; 
+	uint8_t method;
+	char path [MAX_URL]; 
 } Request;
 
 char Request_Method_Strings [][7] = {
-"GET",
-"HEAD",
-"POST",
-"DELETE",
-"PUT",
-"CONNECT",
-"OPTIONS",
-"TRACE",
-"PATCH"
+	"GET",
+	"HEAD",
+	"POST",
+	"DELETE",
+	"PUT",
+	"CONNECT",
+	"OPTIONS",
+	"TRACE",
+	"PATCH"
 };
 
 enum {
-GET,
-HEAD,
-POST,
-DELETE,
-PUT,
-CONNECT,
-OPTIONS,
-TRACE,
-PATCH,
+	GET,
+	HEAD,
+	POST,
+	DELETE,
+	PUT,
+	CONNECT,
+	OPTIONS,
+	TRACE,
+	PATCH,
 };
 
 Request* LoadRequestFromBuffer(Request* request,char* buffer) {
@@ -278,16 +288,16 @@ void LoadQueryStrings(Request* request,int num, ...) {
 		free(outputbuffers);
 }
 
-void loadStringIntoFile(char* file,char* string) {
+void loadStringIntoFile(char* file, char* string) {
 	FILE* f = fopen(file,"w");
-	if (f)
-{
-  fprintf(f,"%s",string);
-  fclose (f);
-} else {
-	printf("Failed to open file\n");
-	exit(-1);
-}
+	if (f) {
+		fprintf(f,"%s",string);
+		fclose (f);
+	}
+	else {
+		printf("Failed to open file\n");
+		exit(-1);
+	}
 }
 
 char* load_file_into_buffer(char* filestring) {
@@ -317,14 +327,13 @@ void save_string_to_file(char* string,char* filestring) {
 	fclose(f);
 }
 
-const char* public_dir = "~/c_projects/Web-server/public";
-
-#define PAGE_MAX (sizeof(server_filenames)/sizeof(server_filenames[0]))
+#define public_dir "/home/maaz/c_projects/Web-server/public"
+#define public_dir_size (sizeof(public_dir) - 1)
 
 int main(int argc, char **argv) {
-	Request client_request = {0,""};
-	Page current_page;
-	char path_wo_query [32] = {0};
+	Request client_request = {0, ""};
+	Page* current_page = page_create_from_file(public_dir "/index.html");
+	char path_wo_query [64] = public_dir;
 	int listenfd, connfd, n;
 	struct sockaddr_in servaddr;
 	uint8_t buff[MAXLINE+1];
@@ -370,41 +379,30 @@ int main(int argc, char **argv) {
 		if (n < 0)
 			err_n_die("read error");
 
-		LoadRequestFromBuffer(&client_request,recvline);
-		bzero(path_wo_query,32);
-		CharToNull(client_request.path,path_wo_query,'?');
-		bzero(buff,sizeof(buff));
+		LoadRequestFromBuffer(&client_request, recvline);
+		bzero(path_wo_query + public_dir_size,sizeof(path_wo_query) - public_dir_size);
+		string_null_char(client_request.path, path_wo_query + public_dir_size, '?');
+		bzero(buff, sizeof(buff));
 		unsigned int Http_Header_Size = 0;
 
-		int i;
-
-		if (string_compare(path_wo_query,"/")) {
+		if (string_compare(path_wo_query + public_dir_size, "/")) {
+			page_load_from_file(current_page, public_dir "/index.html");
 			snprintf((char*)buff, sizeof(buff), "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",
-					current_page.content_type,current_page.filelength);
-			i = 0;
-			while (1) {
-				if (buff[Http_Header_Size] == '\0')
-					break;
-					Http_Header_Size++;
-				}
-			memcpy(buff+Http_Header_Size,pages[0].textbuffer, pages[0].filelength);
+					current_page->content_type,current_page->filelength);
+			while (buff[Http_Header_Size])
+				Http_Header_Size++;
+			memcpy(buff+Http_Header_Size, current_page->textbuffer, current_page->filelength);
 		}
 		else {
-			for (i = 0;i < PAGE_MAX;i++) {
-				if (string_compare(path_wo_query,server_filenames[i])) {
-					snprintf((char*)buff, sizeof(buff), "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",pages[i].content_type,pages[i].filelength);
-					while (1) {
-						if (buff[Http_Header_Size] == '\0')
-							break;
-						Http_Header_Size++;
-					}
-					memcpy(buff+Http_Header_Size,pages[i].textbuffer, pages[i].filelength);
-					break;
-				}
-			}
+			page_load_from_file(current_page, path_wo_query);
+			snprintf((char*)buff, sizeof(buff), "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",
+					current_page->content_type, current_page->filelength);
+			while (buff[Http_Header_Size])
+				Http_Header_Size++;
+			memcpy(buff+Http_Header_Size, current_page->textbuffer, current_page->filelength);
 		}
 		printf("%s\n",buff);
-		write(connfd, (char*)buff, Http_Header_Size+pages[i].filelength);
+		write(connfd, (char*)buff, Http_Header_Size + current_page->filelength);
 		close(connfd);
 	}
 }
