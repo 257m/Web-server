@@ -1,14 +1,20 @@
-all: clean server
+all: clean server run
 
 CC = clang
-CFLAGS = -g -Wno-everything -pthread -lm
+CFLAGS = -Wno-everything
 
 server:
-	$(CC) $(CFLAGS) server.c -o server
+	$(CC) -g $(CFLAGS) server.c -o server
+
+run:
 	./server
 
 clean:
 	rm -f server
+
+install:
+	$(CC) $(CFLAGS) server.c -o server
+	cp server ~/../usr/bin/cserver
 
 wasm:
 	clang --target=wasm32 -emit-llvm -c -S src/main.c -o src/main.ll

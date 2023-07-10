@@ -1,29 +1,23 @@
 #include "common.h"
 
-bool string_compare(const char* str1,const char* str2) {
-	unsigned int c = 0;
-
-    while(str1[c] == str2[c])
-    {
-        if(str1[c] == '\0'|| str2[c] == '\0')
-            break;
-        c++;
+bool string_compare(const char* str1,const char* str2)
+{
+    while(*str1 == *str2) {
+        if(!*str1 || !*str2)
+            return !(*str1 || *str2);
+        str1++;
+		str2++;
     }
-    if(str1[c] == '\0' && str2[c] == '\0')
-        return 1;
-		else return 0;
+	return false;
 }
 
-char* string_null_char(char* string,char* output,char c) {
-	unsigned int charnum = 0;
-	while (string[charnum] != '\0') {
-		if (string[charnum] != c)
-			output[charnum++] = string[charnum];
-		else {
-			output[charnum] = '\0';
-			return output;
-		}
-	}
+char* string_null_char(char* str, char* output, char c)
+{
+	if (!*str)
+		return;
+	while (*str && *str != c)
+		*output++ = *str++;
+	*output = '\0';
 	return output;
 }
 
@@ -36,18 +30,24 @@ char* stratt(const char *s1, const char *s2, char* result)
 
 typedef struct {
 	unsigned long int filelength;
+	int status;
+	char* status_str;
 	char* textbuffer;
 	char* content_type;
+	bool dynamic;
 } Page;
 
 Page* page_create() {
 	Page* page = malloc(sizeof(Page));
 	if (page) {
-	page->textbuffer = NULL;
-	page->filelength = 0;
-		}
+		page->textbuffer = NULL;
+		page->content_type = NULL;
+		page->status_str = NULL;
+		page->filelength = 0;
+		page->dynamic = true;
+	}
 	else {
-		printf("Error allocating memory for page\n");
+		fprintf(stderr, "Error allocating memory for page\n");
 		exit(-1);
 	}
 	return page;
@@ -55,7 +55,8 @@ Page* page_create() {
 
 void page_free(Page* page)
 {
-	free(page->textbuffer);
+	if (page->dynamic)
+		free(page->textbuffer);
 	free(page);
 }
 
@@ -73,21 +74,19 @@ Page* page_create_from_file(char* filename) {
 		fclose (f);
 	}
 	else {
-		printf("Failed to open file: %s\n", filename);
-		exit(-1);
+		fprintf(stderr, "Failed to open file: %s\n", filename);
+		page->status = 404;
+		page->status_str = "Not Found";
+		page->textbuffer = "Not Found";
+		page->content_type = "text/txt";
+		page->filelength = 9;
+		page->dynamic = false;
+		return page;
 	}
-	char extension [32] = "\0";
-	int i = 0;
-	while (filename[i] != '.') {
-		if (!filename[i]) {
-			fprintf(stderr, "file name for page does not have file extension\nExiting...\n");
-			exit(-1);
-		}
-		i++;
-	}
-	int j = 0;
-	while (filename[i] != '\0')
-		extension[j++] = filename[i++];
+	char* extension = filename;
+	while (*filename)
+		if (*(filename++) == '.')
+			extension = filename;
 	if (string_compare(extension,"html"))
 		page->content_type = "text/html";
 	else if (string_compare(extension,"js"))
@@ -97,13 +96,16 @@ Page* page_create_from_file(char* filename) {
 	else if (string_compare(extension, "png"))
 		page->content_type = "image/png";
 	else
-		page->content_type = "text/html";
+		page->content_type = "text/txt";
+	page->status = 200;
+	page->status_str = "OK";
 	return page;
 }
 
 Page* page_load_from_file(Page* page, char* file)
 {
-	free(page->textbuffer);
+	if (page->dynamic)
+		free(page->textbuffer);
 	FILE * f = fopen (file, "rb");
 	if (f) {
 		fseek (f, 0, SEEK_END);
@@ -116,14 +118,20 @@ Page* page_load_from_file(Page* page, char* file)
 		fclose (f);
 	}
 	else {
-		printf("Failed to open file %s\n",file);
-		exit(-1);
+		fprintf(stderr, "Failed to open file %s\n", file);
+		page->status = 404;
+		page->status_str = "Not Found";
+		page->textbuffer = "Not Found";
+		page->content_type = "text/txt";
+		page->filelength = 9;
+		page->dynamic = false;
+		return page;
 	}
 	char extension [32] = "\0";
 	int i = 0;
 	while (file[i++] != '.') {
 		if (file[i-1] == '\0') {
-			fprintf(stderr,"file name for page does not have file extension\nExiting...\n");
+			fprintf(stderr, "file name %s for page does not have file extension\nExiting...\n", file);
 			exit(-1);
 		}
 	}
@@ -142,17 +150,19 @@ Page* page_load_from_file(Page* page, char* file)
 		page->content_type = "image/png";
 	else
 		page->content_type = "text/html";
+	page->status = 200;
+	page->status_str = "OK";
 	return page;
 }
 
 #define MAX_URL 2048
 
 typedef struct {
-	uint8_t method;
 	char path [MAX_URL]; 
+	uint8_t method;
 } Request;
 
-char Request_Method_Strings [][7] = {
+char request_meth_strs [][7] = {
 	"GET",
 	"HEAD",
 	"POST",
@@ -174,35 +184,26 @@ enum {
 	OPTIONS,
 	TRACE,
 	PATCH,
+	MAX_METHOD,
 };
 
-Request* LoadRequestFromBuffer(Request* request,char* buffer) {
-	char tempbuffer [MAX_URL] = {0};
-	unsigned int charnum = 0;
-	unsigned int tempnum = 0;
-	while (1) {
-		if (buffer[charnum] == ' ') {
-			charnum++;
-			break;
-		}
-		tempbuffer[charnum++] = buffer[charnum];
-	}
+void request_load(Request* request,char* buffer)
+{
+	char tempbuffer [32] = "";
+	char* ptemp = tempbuffer;
+	while (*buffer && (*buffer != ' ') && (ptemp < (tempbuffer + sizeof(tempbuffer))))
+		*ptemp++ = *buffer++;
 	
-	for (int i = 0;i < sizeof(Request_Method_Strings)/sizeof(Request_Method_Strings[0]);i++) {
-		if (strcmp(tempbuffer,Request_Method_Strings[i]) == 0) {
-			request->method = i;
+	request->method = 0;
+	while (!string_compare(tempbuffer, request_meth_strs[request->method]))
+		if (++request->method >= MAX_METHOD)
 			break;
-		}
-	}
-	memset(tempbuffer,0,MAX_URL);
-	while(1) {
-		if (buffer[charnum] == ' ')
-			break;
-		tempbuffer[tempnum++] = buffer[charnum++];
-	}
 
-	strncpy(request->path,tempbuffer,MAX_URL);
-	return request;
+	ptemp = request->path;
+	while(*buffer && *buffer != ' ')
+		*ptemp++ = *buffer++;
+	*ptemp = '\0';
+	printf("Request Load: %s\n", ptemp);
 }
 
 /*
@@ -214,7 +215,7 @@ num = number of args ;
 next pass in name of variable as string that you want to query
 then pass in textbuffer to write it to
 */
-void LoadQueryStrings(Request* request,int num, ...) {
+void request_query_load(Request* request,int num, ...) {
 	va_list args;
 	char **varnames = malloc(sizeof(char*) * num);
 	char **outputbuffers = malloc(sizeof(char*) * num);
@@ -288,7 +289,8 @@ void LoadQueryStrings(Request* request,int num, ...) {
 		free(outputbuffers);
 }
 
-void loadStringIntoFile(char* file, char* string) {
+void string_save_to_file(char* file, char* string)
+{
 	FILE* f = fopen(file,"w");
 	if (f) {
 		fprintf(f,"%s",string);
@@ -300,7 +302,8 @@ void loadStringIntoFile(char* file, char* string) {
 	}
 }
 
-char* load_file_into_buffer(char* filestring) {
+char* file_load_into_buffer(char* filestring)
+{
 	char* file = 0;
 	long filelength;
 	FILE * f = fopen (filestring, "rb");
@@ -321,17 +324,14 @@ char* load_file_into_buffer(char* filestring) {
 	return file;
 }
 
-void save_string_to_file(char* string,char* filestring) {
-	FILE* f = fopen(filestring,"wb");
-	fprintf(f,"%s",string);
-	fclose(f);
-}
-
-#define public_dir "/home/maaz/c_projects/Web-server/public"
+#define public_dir "public"
 #define public_dir_size (sizeof(public_dir) - 1)
 
-int main(int argc, char **argv) {
-	Request client_request = {0, ""};
+int main(int argc, char **argv)
+{
+	if (argc > 1)
+		chdir(argv[0]);
+	Request client_request = {"", 0};
 	Page* current_page = page_create_from_file(public_dir "/index.html");
 	char path_wo_query [64] = public_dir;
 	int listenfd, connfd, n;
@@ -351,57 +351,58 @@ int main(int argc, char **argv) {
 		err_n_die("bind error.");
 
 	if (listen(listenfd, 10) < 0)
-    err_n_die("listen error.");
+		err_n_die("listen error.");
 
 	for ( ; ; ) {
 		struct sockaddr_in addr;
 		socklen_t addr_len;
-		char client_address[MAXLINE+1];
+		char client_address[2048];
 
 		printf("waiting for a connection on port %d\n",SERVER_PORT);
 		fflush(stdout);
 		connfd = accept(listenfd, (SA *) &addr, &addr_len);
 
-		inet_ntop(AF_INET, &addr, client_address, MAXLINE);
+		inet_ntop(AF_INET, &addr, client_address, 2047);
 		printf("Client connection: %s\n",client_address);
 
 		memset(recvline, 0, MAXLINE);
 
-		while ( (n = read(connfd, recvline, MAXLINE)) > 0) {
-			fprintf(stdout, "\n%s\n\n%s", bin2hex(recvline, n),recvline);
+		while ((n = read(connfd, recvline, MAXLINE))) {
+			fprintf(stderr, "\nPacket Size: %d\n%s\n\n%s", n, bin2hex(recvline, n), recvline);
 
-			if (recvline[n-1] == '\n') {
+			if (recvline[n-1] == '\n')
 				break;
-			}
 			memset(recvline, 0, MAXLINE);
 		}
 
 		if (n < 0)
 			err_n_die("read error");
 
-		LoadRequestFromBuffer(&client_request, recvline);
+		request_load(&client_request, recvline);
 		bzero(path_wo_query + public_dir_size,sizeof(path_wo_query) - public_dir_size);
 		string_null_char(client_request.path, path_wo_query + public_dir_size, '?');
 		bzero(buff, sizeof(buff));
 		unsigned int Http_Header_Size = 0;
 
-		if (string_compare(path_wo_query + public_dir_size, "/")) {
+		if (!*path_wo_query + public_dir_size) {
+			current_page->status = 404;
+			current_page->status_str = "Not Found";
+			current_page->textbuffer = "Not Found";
+			current_page->content_type = "text/txt";
+			current_page->filelength = 9;
+			current_page->dynamic = false;
+		}
+		else if (string_compare(path_wo_query + public_dir_size, "/"))
 			page_load_from_file(current_page, public_dir "/index.html");
-			snprintf((char*)buff, sizeof(buff), "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",
-					current_page->content_type,current_page->filelength);
-			while (buff[Http_Header_Size])
-				Http_Header_Size++;
-			memcpy(buff+Http_Header_Size, current_page->textbuffer, current_page->filelength);
-		}
-		else {
+		else
 			page_load_from_file(current_page, path_wo_query);
-			snprintf((char*)buff, sizeof(buff), "HTTP/1.1 200 OK\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",
-					current_page->content_type, current_page->filelength);
-			while (buff[Http_Header_Size])
-				Http_Header_Size++;
-			memcpy(buff+Http_Header_Size, current_page->textbuffer, current_page->filelength);
-		}
-		printf("%s\n",buff);
+
+		snprintf((char*)buff, sizeof(buff), "HTTP/1.1 %d %s\r\nContent-Type: %s; charset=UTF-8\r\nConnection: close\r\nContent-Length: %d\r\n\r\n",
+			current_page->status, current_page->status_str, current_page->content_type, current_page->filelength);
+		while (buff[Http_Header_Size])
+			Http_Header_Size++;
+		memcpy(buff+Http_Header_Size, current_page->textbuffer, current_page->filelength);
+		fprintf(stderr, "%s\n", buff);
 		write(connfd, (char*)buff, Http_Header_Size + current_page->filelength);
 		close(connfd);
 	}
