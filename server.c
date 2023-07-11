@@ -131,8 +131,14 @@ Page* page_load_from_file(Page* page, char* file)
 	int i = 0;
 	while (file[i++] != '.') {
 		if (file[i-1] == '\0') {
-			fprintf(stderr, "file name %s for page does not have file extension\nExiting...\n", file);
-			exit(-1);
+			fprintf(stderr, "file name %s for page does not have file extension\n", file);
+			page->status = 404;
+			page->status_str = "Not Found";
+			page->textbuffer = "Not Found";
+			page->content_type = "text/txt";
+			page->filelength = 9;
+			page->dynamic = false;
+			return page;
 		}
 	}
 	int j = 0;
