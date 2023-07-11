@@ -199,11 +199,12 @@ void request_load(Request* request,char* buffer)
 		if (++request->method >= MAX_METHOD)
 			break;
 
+	buffer += (*buffer == ' ');
 	ptemp = request->path;
 	while(*buffer && *buffer != ' ')
 		*ptemp++ = *buffer++;
 	*ptemp = '\0';
-	printf("Request Load: %s\n", ptemp);
+	printf("Request Load: %s\n", request->path);
 }
 
 /*
@@ -384,15 +385,7 @@ int main(int argc, char **argv)
 		bzero(buff, sizeof(buff));
 		unsigned int Http_Header_Size = 0;
 
-		if (!*path_wo_query + public_dir_size) {
-			current_page->status = 404;
-			current_page->status_str = "Not Found";
-			current_page->textbuffer = "Not Found";
-			current_page->content_type = "text/txt";
-			current_page->filelength = 9;
-			current_page->dynamic = false;
-		}
-		else if (string_compare(path_wo_query + public_dir_size, "/"))
+		if (string_compare(path_wo_query + public_dir_size, "/"))
 			page_load_from_file(current_page, public_dir "/index.html");
 		else
 			page_load_from_file(current_page, path_wo_query);
